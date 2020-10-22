@@ -1,22 +1,42 @@
-import { Component, Input, OnChanges, SimpleChange } from '@angular/core';
+import {
+  Component,
+  Input,
+  OnChanges,
+  SimpleChange,
+  SimpleChanges,
+} from '@angular/core';
 
-const fromChange = <K extends string>(
+type WatchTuple = [string, (e: SimpleChange) => void];
+
+interface Watch {
+  watchers: WatchTuple[];
+  originalOnChanges(changes: SimpleChanges): void;
+}
+
+type Watched<U> = U & Watch
+
+const watchComponent = <U extends Partial<Watch & OnChanges>>(target: U): Watched<U> => {
+  const returnValue = target as Watched<U>;
+  returnValue.watchers = target.watchers ?? [];
+  returnValue.originalOnChanges = target.originalOnChanges ?? target.ngOnChanges ?? function () {};
+  return returnValue;
+};
+
+const fromChange = <K extends string, T>(
   key: K,
 ) => <U extends string,
   T extends Partial<OnChanges> & { [key in K]: unknown } & { [key in U]: (e: SimpleChange) => void }>(
-  target: T,
+  componentInstance: T,
   propertyKey: U,
 ) => {
-  const originalOnChanges = target.ngOnChanges;
+  const watchedTarget = watchComponent(componentInstance);
+  watchedTarget.watchers.push([key, watchedTarget[propertyKey]]);
 
-  const callback = target[propertyKey];
-  target['ngOnChanges'] = changes => {
-    if (originalOnChanges) {
-      originalOnChanges(changes);
-    }
-    if (changes[key]) {
-      callback(changes[key]);
-    }
+  watchedTarget.ngOnChanges = (changes) => {
+    watchedTarget.originalOnChanges(changes);
+    watchedTarget.watchers.forEach(([key, fn]) => {
+      if (changes[key]) { fn(changes[key]); }
+    });
   };
 };
 
@@ -34,12 +54,12 @@ const fromChange = <K extends string>(
   ],
 })
 export class HelloComponent {
-  @Input() name: string = '';
+  @Input() name = '';
   @Input() count = 0;
 
   @fromChange('name')
   onNameChanged(e: SimpleChange) {
-    console.log('name changed to', e.currentValue);
+    console.log('data changed to', e.currentValue);
   }
 
   @fromChange('count')
