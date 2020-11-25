@@ -1,44 +1,5 @@
-import {
-  Component,
-  Input,
-  OnChanges,
-  SimpleChange,
-  SimpleChanges,
-} from '@angular/core';
-
-type WatchTuple = [string, (e: SimpleChange) => void];
-
-interface Watch {
-  watchers: WatchTuple[];
-  originalOnChanges(changes: SimpleChanges): void;
-}
-
-type Watched<U> = U & Watch
-
-const watchComponent = <U extends Partial<Watch & OnChanges>>(target: U): Watched<U> => {
-  const returnValue = target as Watched<U>;
-  returnValue.watchers = target.watchers ?? [];
-  returnValue.originalOnChanges = target.originalOnChanges ?? target.ngOnChanges ?? function () {};
-  return returnValue;
-};
-
-const fromChange = <K extends string, T>(
-  key: K,
-) => <U extends string,
-  T extends Partial<OnChanges> & { [key in K]: unknown } & { [key in U]: (e: SimpleChange) => void }>(
-  componentInstance: T,
-  propertyKey: U,
-) => {
-  const watchedTarget = watchComponent(componentInstance);
-  watchedTarget.watchers.push([key, watchedTarget[propertyKey]]);
-
-  watchedTarget.ngOnChanges = (changes) => {
-    watchedTarget.originalOnChanges(changes);
-    watchedTarget.watchers.forEach(([key, fn]) => {
-      if (changes[key]) { fn(changes[key]); }
-    });
-  };
-};
+import { Component, Input, SimpleChange } from '@angular/core';
+import { fromChange } from '../from-change.decorator';
 
 @Component({
   selector: 'hello',
@@ -57,13 +18,27 @@ export class HelloComponent {
   @Input() name = '';
   @Input() count = 0;
 
+  private innerCounter = 0;
+
   @fromChange('name')
   onNameChanged(e: SimpleChange) {
-    console.log('data changed to', e.currentValue);
+    console.log(
+      'data changed to',
+      e.currentValue,
+      'while innerCounter is',
+      this.innerCounter,
+    );
+
+    this.increaseInnerCounter();
   }
 
   @fromChange('count')
   onCountChanged(e: SimpleChange) {
     console.log('count changed to', e.currentValue);
+    this.increaseInnerCounter();
+  }
+
+  private increaseInnerCounter() {
+    this.innerCounter += 1;
   }
 }
